@@ -1,0 +1,150 @@
+name: NuclearRT Windows x64 build
+
+on:
+  push:
+    branches:
+      - nuclearrt-win64-smokebuild
+
+permissions:
+  contents: read
+
+jobs:
+  build-win64:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout NuclearRT source
+        uses: actions/checkout@v4
+        with:
+          repository: nuclearrt/nuclearrt
+          ref: main
+          path: upstream
+
+      - name: Set up MSVC x64 build environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Prepare generated-project smoke-test fixture
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp -a upstream/runtime ./runtime-smoke
+          find runtime-smoke/source -type f -name '*.template.cpp' -delete
+          find runtime-smoke/include -type f -name '*.template.h' -delete
+
+          python - <<'PY'
+          from pathlib import Path
+          template = Path("upstream/runtime/include/ObjectFactory.template.h").read_text(encoding="utf-8-sig")
+          template = template.replace("{{ EXTENSION_INCLUDES }}", "")
+          template = template.replace("{{ OBJECT_INFO_FUNCTIONS_DEFINITIONS }}", "")
+          Path("runtime-smoke/include/ObjectFactory.h").write_text(template, encoding="utf-8")
+          PY
+
+          cat > runtime-smoke/include/EffectBank.h <<'EOF'
+          #pragma once
+          #include "EffectInstance.h"
+          class EffectBank {
+          public:
+              static EffectBank& Instance() {
+                  static EffectBank instance;
+                  return instance;
+              }
+          };
+          EOF
+
+          cat > runtime-smoke/source/AppData.cpp <<'EOF'
+          #include "AppData.h"
+          void AppData::Initialize() {}
+          EOF
+
+          cat > runtime-smoke/source/ObjectFactory.cpp <<'EOF'
+          #include "ObjectFactory.h"
+          ObjectInstance* ObjectFactory::CreateInstance(unsigned int handle) {
+              (void)handle;
+              return nullptr;
+          }
+          EOF
+
+          cat > runtime-smoke/source/EffectBank.cpp <<'EOF'
+          #include "EffectBank.h"
+          EOF
+
+          cat > runtime-smoke/source/FontBank.cpp <<'EOF'
+          #include "FontBank.h"
+          FontBank::FontBank() {}
+          EOF
+
+          cat > runtime-smoke/source/ImageBank.cpp <<'EOF'
+          #include "ImageBank.h"
+          ImageBank::ImageBank() {}
+          EOF
+
+          cat > runtime-smoke/source/SoundBank.cpp <<'EOF'
+          #include "SoundBank.h"
+          SoundBank::SoundBank() {}
+          EOF
+
+          cat > runtime-smoke/source/FrameFactory.cpp <<'EOF'
+          #include "FrameFactory.h"
+          #include "Frame.h"
+
+          class SmokeFrame final : public Frame {
+          public:
+              void Initialize() override {
+                  Frame::Initialize();
+                  Index = 0;
+                  Name = "NuclearRT Windows x64 smoke test (empty fixture)";
+                  Width = 640;
+                  Height = 480;
+                  BackgroundColor = 0xFF172033;
+                  Frame::PostInitialize();
+              }
+          };
+
+          std::unique_ptr<Frame> FrameFactory::CreateFrame(int index) {
+              if (index != 0) return nullptr;
+              return std::make_unique<SmokeFrame>();
+          }
+
+          int FrameFactory::GetFrameCount() { return 1; }
+          EOF
+
+      - name: Configure and build Windows x64
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S runtime-smoke -B runtime-smoke/build/windows \
+            -G "Visual Studio 17 2022" -A x64 -DPLATFORM_BACKEND=SDL2
+          cmake --build runtime-smoke/build/windows --config Release --parallel 2
+
+          binary="$(find runtime-smoke/build/windows -type f -iname 'nuclearrt-runtime.exe' -print -quit)"
+          test -n "$binary"
+          mkdir -p out
+          binary_dir="$(dirname "$binary")"
+          cp -a "$binary_dir"/. out/
+          dumpbin /headers "$binary" > out/pe-headers.txt
+          grep -Eqi '8664 machine \(x64\)' out/pe-headers.txt
+          printf '%s\n' "Windows x64 PE architecture verified." > out/BUILD-STATUS.txt
+
+      - name: Include build notes
+        shell: bash
+        run: |
+          cat > out/README.txt <<'EOF'
+          NuclearRT Windows x64 compile smoke-test
+
+          This is a Windows x64 build of the NuclearRT C++ runtime using a
+          generated EMPTY fixture frame. It does NOT load Sonic USB Online,
+          the recovered CCN, or an MFA project. It is not a playable game build.
+
+          Upstream: https://github.com/nuclearrt/nuclearrt
+          License: AGPL-3.0. Read upstream LICENSE and third-party notices.
+          EOF
+
+      - name: Upload Windows x64 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuclearrt-windows-x64-smoke-test
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
