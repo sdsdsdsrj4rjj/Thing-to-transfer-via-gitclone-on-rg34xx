@@ -43,6 +43,11 @@ jobs:
               'GIT_SHALLOW    FALSE\n            GIT_SUBMODULES ""',
               1,
           )
+          resource_line = "add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${IMGUI_SOURCES} resources.rc)"
+          resource_free_line = "add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS} ${IMGUI_SOURCES})"
+          if resource_line not in text:
+              raise SystemExit("Windows resources.rc line not found")
+          text = text.replace(resource_line, resource_free_line, 1)
           cmake.write_text(text, encoding="utf-8")
 
           backend = Path("runtime-smoke/cmake/backend_sdl2_setup.cmake")
