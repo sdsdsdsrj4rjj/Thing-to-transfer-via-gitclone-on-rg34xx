@@ -40,18 +40,13 @@ jobs:
           find runtime-smoke/source -type f -name '*.template.cpp' -delete
           find runtime-smoke/include -type f -name '*.template.h' -delete
 
-          cat > runtime-smoke/include/ObjectFactory.h <<'EOF'
-          #pragma once
-          #include "ObjectInstance.h"
-          class ObjectFactory {
-          public:
-              static ObjectFactory& Instance() {
-                  static ObjectFactory instance;
-                  return instance;
-              }
-              ObjectInstance* CreateInstance(unsigned int handle);
-          };
-          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          template = Path("upstream/runtime/include/ObjectFactory.template.h").read_text()
+          template = template.replace("{{ EXTENSION_INCLUDES }}", "")
+          template = template.replace("{{ OBJECT_INFO_FUNCTIONS_DEFINITIONS }}", "")
+          Path("runtime-smoke/include/ObjectFactory.h").write_text(template)
+          PY
 
           cat > runtime-smoke/include/EffectBank.h <<'EOF'
           #pragma once
