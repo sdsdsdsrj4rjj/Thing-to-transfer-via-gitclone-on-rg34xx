@@ -1,0 +1,162 @@
+name: NuclearRT ARM64 smoke build
+
+on:
+  push:
+    branches:
+      - nuclearrt-arm64-smokebuild
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64:
+    # Ubuntu 22.04 on ARM64 keeps the binary aligned with older ARM64 Linux systems.
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Checkout NuclearRT source
+        uses: actions/checkout@v4
+        with:
+          repository: nuclearrt/nuclearrt
+          ref: main
+          path: upstream
+
+      - name: Install SDL2 and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libsdl2-dev libsdl2-ttf-dev
+
+      - name: Prepare a minimal generated-project fixture
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp -a upstream/runtime ./runtime-smoke
+
+          # NuclearRT's base source tree contains exporter templates, not a
+          # directly buildable generic runtime. Replace those templates with
+          # small generated stubs so the ARM64 toolchain can be smoke-tested.
+          find runtime-smoke/source -type f -name '*.template.cpp' -delete
+          find runtime-smoke/include -type f -name '*.template.h' -delete
+
+          cat > runtime-smoke/include/ObjectFactory.h <<'EOF'
+          #pragma once
+          #include "ObjectInstance.h"
+          class ObjectFactory {
+          public:
+              static ObjectFactory& Instance() {
+                  static ObjectFactory instance;
+                  return instance;
+              }
+              ObjectInstance* CreateInstance(unsigned int handle);
+          };
+          EOF
+
+          cat > runtime-smoke/include/EffectBank.h <<'EOF'
+          #pragma once
+          #include "EffectInstance.h"
+          class EffectBank {
+          public:
+              static EffectBank& Instance() {
+                  static EffectBank instance;
+                  return instance;
+              }
+          };
+          EOF
+
+          cat > runtime-smoke/source/AppData.cpp <<'EOF'
+          #include "AppData.h"
+          void AppData::Initialize() {}
+          EOF
+
+          cat > runtime-smoke/source/ObjectFactory.cpp <<'EOF'
+          #include "ObjectFactory.h"
+          ObjectInstance* ObjectFactory::CreateInstance(unsigned int handle) {
+              (void)handle;
+              return nullptr;
+          }
+          EOF
+
+          cat > runtime-smoke/source/EffectBank.cpp <<'EOF'
+          #include "EffectBank.h"
+          EOF
+
+          cat > runtime-smoke/source/FontBank.cpp <<'EOF'
+          #include "FontBank.h"
+          FontBank::FontBank() {}
+          EOF
+
+          cat > runtime-smoke/source/ImageBank.cpp <<'EOF'
+          #include "ImageBank.h"
+          ImageBank::ImageBank() {}
+          EOF
+
+          cat > runtime-smoke/source/SoundBank.cpp <<'EOF'
+          #include "SoundBank.h"
+          SoundBank::SoundBank() {}
+          EOF
+
+          cat > runtime-smoke/source/FrameFactory.cpp <<'EOF'
+          #include "FrameFactory.h"
+          #include "Frame.h"
+
+          class SmokeFrame final : public Frame {
+          public:
+              void Initialize() override {
+                  Frame::Initialize();
+                  Index = 0;
+                  Name = "NuclearRT ARM64 smoke test (empty fixture)";
+                  Width = 640;
+                  Height = 480;
+                  BackgroundColor = 0xFF172033;
+                  Frame::PostInitialize();
+              }
+          };
+
+          std::unique_ptr<Frame> FrameFactory::CreateFrame(int index) {
+              if (index != 0) return nullptr;
+              return std::make_unique<SmokeFrame>();
+          }
+
+          int FrameFactory::GetFrameCount() { return 1; }
+          EOF
+
+      - name: Configure and build ARM64 binary
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S runtime-smoke -B runtime-smoke/build/linux -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPLATFORM_BACKEND=SDL2
+          cmake --build runtime-smoke/build/linux --parallel 2
+          file runtime-smoke/build/linux/bin/NuclearRT-Runtime
+          readelf -h runtime-smoke/build/linux/bin/NuclearRT-Runtime | grep -E 'Class:|Machine:'
+          ldd runtime-smoke/build/linux/bin/NuclearRT-Runtime | tee runtime-smoke/build/linux/ldd.txt
+
+      - name: Package smoke-test executable and metadata
+        run: |
+          mkdir -p out
+          cp runtime-smoke/build/linux/bin/NuclearRT-Runtime out/
+          cp runtime-smoke/build/linux/ldd.txt out/
+          cat > out/README.txt <<'EOF'
+          NuclearRT ARM64 compile smoke-test
+
+          This ARM64 Linux executable verifies the NuclearRT C++ runtime can be
+          compiled for an ARM64 Linux target. It contains a generated EMPTY
+          fixture frame only. It does NOT load Sonic USB Online or any CCN/MFA
+          file, and is NOT a playable PortMaster port.
+
+          Upstream: https://github.com/nuclearrt/nuclearrt
+          License: AGPL-3.0. Check upstream license and notices before redistribution.
+          EOF
+          cd out
+          zip -9 ../nuclearrt-arm64-smoke-test.zip NuclearRT-Runtime ldd.txt README.txt
+
+      - name: Upload ARM64 build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuclearrt-arm64-smoke-test
+          path: nuclearrt-arm64-smoke-test.zip
+          if-no-files-found: error
+          retention-days: 14
