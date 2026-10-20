@@ -52,12 +52,12 @@ jobs:
 
           backend = Path("runtime-smoke/cmake/backend_sdl2_setup.cmake")
           text = backend.read_text(encoding="utf-8-sig")
-          needle = 'set(SDLTTF_VENDORED ON CACHE BOOL "" FORCE)'
+          needle = "find_package(SDL2_ttf QUIET)"
           if needle not in text:
-              raise SystemExit("SDL2_ttf CMake setting not found")
+              raise SystemExit("SDL2_ttf find_package line not found")
           text = text.replace(
               needle,
-              needle + '\nset(SDLTTF_HARFBUZZ OFF CACHE BOOL "" FORCE)',
+              'set(SDLTTF_HARFBUZZ OFF CACHE BOOL "" FORCE)\n' + needle,
               1,
           )
           backend.write_text(text, encoding="utf-8")
