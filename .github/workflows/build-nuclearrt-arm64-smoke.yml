@@ -125,14 +125,14 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DPLATFORM_BACKEND=SDL2
           cmake --build runtime-smoke/build/linux --parallel 2
-          file runtime-smoke/build/linux/bin/NuclearRT-Runtime
-          readelf -h runtime-smoke/build/linux/bin/NuclearRT-Runtime | grep -E 'Class:|Machine:'
-          ldd runtime-smoke/build/linux/bin/NuclearRT-Runtime | tee runtime-smoke/build/linux/ldd.txt
+          file runtime-smoke/build/linux/bin/nuclearrt-runtime
+          readelf -h runtime-smoke/build/linux/bin/nuclearrt-runtime | grep -E 'Class:|Machine:'
+          ldd runtime-smoke/build/linux/bin/nuclearrt-runtime | tee runtime-smoke/build/linux/ldd.txt
 
       - name: Package smoke-test executable and metadata
         run: |
           mkdir -p out
-          cp runtime-smoke/build/linux/bin/NuclearRT-Runtime out/
+          cp runtime-smoke/build/linux/bin/nuclearrt-runtime out/
           cp runtime-smoke/build/linux/ldd.txt out/
           cat > out/README.txt <<'EOF'
           NuclearRT ARM64 compile smoke-test
@@ -146,7 +146,7 @@ jobs:
           License: AGPL-3.0. Check upstream license and notices before redistribution.
           EOF
           cd out
-          zip -9 ../nuclearrt-arm64-smoke-test.zip NuclearRT-Runtime ldd.txt README.txt
+          zip -9 ../nuclearrt-arm64-smoke-test.zip nuclearrt-runtime ldd.txt README.txt
 
       - name: Upload ARM64 build artifact
         uses: actions/upload-artifact@v4
