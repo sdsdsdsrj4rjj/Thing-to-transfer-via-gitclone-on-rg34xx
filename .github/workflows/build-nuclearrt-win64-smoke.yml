@@ -30,6 +30,34 @@ jobs:
         run: |
           set -euxo pipefail
           cp -a upstream/runtime ./runtime-smoke
+
+          # This build only needs the SDL2 text-rendering APIs. Skip the
+          # optional HarfBuzz git submodule to avoid its very long test paths
+          # on Windows and keep the smoke-test dependency set small.
+          python - <<'PY'
+          from pathlib import Path
+          cmake = Path("runtime-smoke/CMakeLists.txt")
+          text = cmake.read_text(encoding="utf-8-sig")
+          text = text.replace(
+              "GIT_SHALLOW    FALSE",
+              'GIT_SHALLOW    FALSE\n            GIT_SUBMODULES ""',
+              1,
+          )
+          cmake.write_text(text, encoding="utf-8")
+
+          backend = Path("runtime-smoke/cmake/backend_sdl2_setup.cmake")
+          text = backend.read_text(encoding="utf-8-sig")
+          needle = 'set(SDLTTF_VENDORED ON CACHE BOOL "" FORCE)'
+          if needle not in text:
+              raise SystemExit("SDL2_ttf CMake setting not found")
+          text = text.replace(
+              needle,
+              needle + '\nset(SDLTTF_HARFBUZZ OFF CACHE BOOL "" FORCE)',
+              1,
+          )
+          backend.write_text(text, encoding="utf-8")
+          PY
+
           find runtime-smoke/source -type f -name '*.template.cpp' -delete
           find runtime-smoke/include -type f -name '*.template.h' -delete
 
