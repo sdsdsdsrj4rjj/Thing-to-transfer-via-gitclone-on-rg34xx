@@ -27,9 +27,9 @@ jobs:
         shell: pwsh
         run: nuget restore CTFAK2.0/CTFAK.sln
 
-      - name: Build Release
+      - name: Build Release x64
         shell: pwsh
-        run: msbuild CTFAK2.0/CTFAK.sln /m /p:Configuration=Release /p:Platform=x64
+        run: msbuild CTFAK2.0/CTFAK.sln /m /p:Configuration=Release /p:Platform=x64 /p:RestorePackagesConfig=true
 
       - name: Assemble CTFAK folder
         shell: pwsh
@@ -37,19 +37,34 @@ jobs:
           $ErrorActionPreference = "Stop"
           $root = Join-Path $PWD "CTFAK2.0"
           $out = Join-Path $PWD "CTFAK-Win64"
-          $cli = Join-Path $root "Interface/CTFAK.Cli/bin/Release/net6.0-windows"
-          $core = Join-Path $root "Core/CTFAK.Core/bin/Release/net6.0-windows"
+          $cliProject = Join-Path $root "Interface/CTFAK.Cli"
+          $cli = Join-Path $cliProject "bin/Release/net6.0-windows"
           $decompiler = Join-Path $root "Plugins/CTFAK.Decompiler/bin/Release/net6.0-windows"
           $dumper = Join-Path $root "Plugins/Dumper/bin/Release/net6.0-windows"
           New-Item -ItemType Directory -Force -Path $out, (Join-Path $out "Plugins") | Out-Null
-          if (!(Test-Path $cli)) { throw "CLI output missing: $cli" }
-          Copy-Item "$cli/*" $out -Recurse -Force
-          if (Test-Path $core) { Copy-Item "$core/*" $out -Recurse -Force }
-          Copy-Item "$decompiler/CTFAK.Decompiler.dll" (Join-Path $out "Plugins") -Force
-          Copy-Item "$dumper/Dumper.dll" (Join-Path $out "Plugins") -Force
+          if (!(Test-Path (Join-Path $cli "CTFAK.Cli.exe"))) {
+            $found = Get-ChildItem $cliProject -Filter CTFAK.Cli.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -eq $found) { throw "CTFAK.Cli.exe was not produced. Build output folder: $cli" }
+            $cli = $found.DirectoryName
+          }
+          Copy-Item (Join-Path $cli "*") $out -Recurse -Force
+          if (!(Test-Path (Join-Path $decompiler "CTFAK.Decompiler.dll"))) {
+            $found = Get-ChildItem (Join-Path $root "Plugins/CTFAK.Decompiler") -Filter CTFAK.Decompiler.dll -Recurse | Select-Object -First 1
+            if ($null -eq $found) { throw "CTFAK.Decompiler.dll missing after build" }
+            $decompiler = $found.DirectoryName
+          }
+          if (!(Test-Path (Join-Path $dumper "Dumper.dll"))) {
+            $found = Get-ChildItem (Join-Path $root "Plugins/Dumper") -Filter Dumper.dll -Recurse | Select-Object -First 1
+            if ($null -eq $found) { throw "Dumper.dll missing after build" }
+            $dumper = $found.DirectoryName
+          }
+          Copy-Item (Join-Path $decompiler "CTFAK.Decompiler.dll") (Join-Path $out "Plugins") -Force
+          Copy-Item (Join-Path $dumper "Dumper.dll") (Join-Path $out "Plugins") -Force
           Invoke-WebRequest "https://github.com/CTFAK/.github/raw/main/ctfakrequirements.zip" -OutFile "ctfakrequirements.zip"
           Expand-Archive -Path "ctfakrequirements.zip" -DestinationPath $out -Force
           if (!(Test-Path (Join-Path $out "template.mfa"))) { throw "template.mfa missing; requirements archive did not extract correctly." }
+          if (!(Test-Path (Join-Path $out "Plugins/CTFAK.Decompiler.dll"))) { throw "Decompiler plugin was not packaged." }
+          if (!(Test-Path (Join-Path $out "Plugins/Dumper.dll"))) { throw "Dumper plugin was not packaged." }
           Get-ChildItem $out -Recurse | Select-Object FullName
 
       - name: Package CTFAK 2.0 Win64
