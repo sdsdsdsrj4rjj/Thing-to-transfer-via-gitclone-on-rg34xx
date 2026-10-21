@@ -76,6 +76,15 @@ jobs:
               1,
           )
           backend.write_text(text, encoding="utf-8")
+
+          # vcpkg's static SDL2_ttf package exports the suffixed target.
+          backend_link = Path("runtime-smoke/cmake/backend_sdl2_link.cmake")
+          text = backend_link.read_text(encoding="utf-8-sig")
+          target = "SDL2_ttf::SDL2_ttf"
+          if target not in text:
+              raise SystemExit("SDL2_ttf link target not found")
+          text = text.replace(target, "SDL2_ttf::SDL2_ttf-static")
+          backend_link.write_text(text, encoding="utf-8")
           PY
 
           find runtime-smoke/source -type f -name '*.template.cpp' -delete
