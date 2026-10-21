@@ -1,0 +1,64 @@
+name: Build CTFAK 2.0 Win64
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-ctfak2-win64.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout CTFAK 2.0
+        uses: actions/checkout@v4
+        with:
+          repository: CTFAK/CTFAK2.0
+          ref: master
+          path: CTFAK2.0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore NuGet packages
+        shell: pwsh
+        run: nuget restore CTFAK2.0/CTFAK.sln
+
+      - name: Build Release
+        shell: pwsh
+        run: msbuild CTFAK2.0/CTFAK.sln /m /p:Configuration=Release /p:Platform=x64
+
+      - name: Assemble CTFAK folder
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $PWD "CTFAK2.0"
+          $out = Join-Path $PWD "CTFAK-Win64"
+          $cli = Join-Path $root "Interface/CTFAK.Cli/bin/Release/net6.0-windows"
+          $core = Join-Path $root "Core/CTFAK.Core/bin/Release/net6.0-windows"
+          $decompiler = Join-Path $root "Plugins/CTFAK.Decompiler/bin/Release/net6.0-windows"
+          $dumper = Join-Path $root "Plugins/Dumper/bin/Release/net6.0-windows"
+          New-Item -ItemType Directory -Force -Path $out, (Join-Path $out "Plugins") | Out-Null
+          if (!(Test-Path $cli)) { throw "CLI output missing: $cli" }
+          Copy-Item "$cli/*" $out -Recurse -Force
+          if (Test-Path $core) { Copy-Item "$core/*" $out -Recurse -Force }
+          Copy-Item "$decompiler/CTFAK.Decompiler.dll" (Join-Path $out "Plugins") -Force
+          Copy-Item "$dumper/Dumper.dll" (Join-Path $out "Plugins") -Force
+          Invoke-WebRequest "https://github.com/CTFAK/.github/raw/main/ctfakrequirements.zip" -OutFile "ctfakrequirements.zip"
+          Expand-Archive -Path "ctfakrequirements.zip" -DestinationPath $out -Force
+          if (!(Test-Path (Join-Path $out "template.mfa"))) { throw "template.mfa missing; requirements archive did not extract correctly." }
+          Get-ChildItem $out -Recurse | Select-Object FullName
+
+      - name: Package CTFAK 2.0 Win64
+        shell: pwsh
+        run: Compress-Archive -Path CTFAK-Win64/* -DestinationPath CTFAK-2.0-Win64.zip -Force
+
+      - name: Upload CTFAK 2.0 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CTFAK-2.0-Win64
+          path: CTFAK-2.0-Win64.zip
+          if-no-files-found: error
