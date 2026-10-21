@@ -50,7 +50,7 @@ replace_once(
     '\t\t\t\telse\n'
     '\t\t\t\t{\n'
     '\t\t\t\t\tLog("Original MFA unavailable; using CCN-only mode. App icons and editor-derived global flags may be incomplete.");\n'
-    '\t\t\t\t}')
+    '\t\t\t\t}'
 )
 
 # 2. Allow null MFA reader/data through the exporter object model.
