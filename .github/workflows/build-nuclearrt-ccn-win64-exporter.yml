@@ -1,0 +1,76 @@
+name: NuclearRT CCN-only exporter Win64
+
+on:
+  push:
+    branches:
+      - nuclearrt-ccn-win64-exporter
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-exporter:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout this branch (compatibility patch)
+        uses: actions/checkout@v4
+
+      - name: Checkout upstream NuclearRT with its submodules
+        uses: actions/checkout@v4
+        with:
+          repository: nuclearrt/nuclearrt
+          ref: main
+          submodules: recursive
+          path: upstream
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Apply CCN-only exporter patch
+        shell: pwsh
+        run: |
+          python tools/patch_nuclearrt_ccn_only.py upstream
+
+      - name: Publish patched Windows x64 exporter
+        shell: pwsh
+        run: |
+          dotnet publish upstream/exporter/exporter.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false --output out/exporter
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package runtime base and usage notes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item -Path upstream/runtime -Destination out/runtime -Recurse
+          @'
+          NuclearRT CCN-only exporter (Windows x64)
+
+          This is a patched NuclearRT exporter plus the runtime source/template folder.
+          It no longer requires the original .mfa file just to begin exporting a CCN.
+          It is NOT a prebuilt Sonic USB Online game.
+
+          To try a CCN export:
+          1. Extract the complete package so "exporter" and "runtime" are sibling folders.
+          2. Open a terminal in the "exporter" folder.
+          3. Run:
+             exporter.exe WindowsRelease "C:\path\to\SonicUSBOnline_1.47.19.ccn" "C:\path\to\output\SonicUSBOnline.exe"
+          4. Review the export/build log. The output path is a target path; NuclearRT generates C++ project files beside it.
+
+          A native game build also needs the Windows C++ toolchain, CMake, and SDL2/SDL2_ttf development dependencies configured for NuclearRT.
+          This patch only makes the original MFA optional. It does not implement unsupported extensions.
+          The supplied CCN contains Lacewing objects and many Text Blitter objects, which are not fully handled by the current NuclearRT exporter. An export may fail or generate incomplete logic until these are implemented.
+
+          The earlier "smoke-test" executable was an empty runtime fixture; this artifact is a separately compiled exporter tool.
+          '@ | Set-Content -Encoding utf8 out/README-Windows.txt
+
+      - name: Upload patched exporter package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuclearrt-ccn-win64-exporter
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
