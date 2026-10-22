@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - ".github/workflows/build-ctfak2-win64.yml"
+      - "tools/patch_ctfak2_export_progress.py"
 
 permissions:
   contents: read
@@ -74,6 +75,44 @@ jobs:
           if (!(Test-Path (Join-Path $out "template.mfa"))) { throw "template.mfa missing; requirements archive did not extract correctly." }
           if (!(Test-Path (Join-Path $out "Plugins/CTFAK.Decompiler.dll"))) { throw "Decompiler plugin was not packaged." }
           if (!(Test-Path (Join-Path $out "Plugins/Dumper.dll"))) { throw "Dumper plugin was not packaged." }
+          @'
+@echo off
+setlocal
+cd /d "%~dp0"
+set "GAME=%~dp0sonicusbonline1.47.19.exe"
+if not exist "%GAME%" (
+  echo Put sonicusbonline1.47.19.exe in this folder first.
+  echo The test will not alter the original EXE.
+  pause
+  exit /b 2
+)
+echo.
+echo CTFAK 2.0 diagnostic export for Sonic USB Online 1.47.19
+echo This may take a while; do not close it just because it pauses at the last frame.
+echo Detailed progress is saved to Latest.log.
+echo.
+CTFAK.Cli.exe -path "%GAME%" -forcetype exe -tool "Export as MFA" -closeonfinish
+set "RC=%ERRORLEVEL%"
+echo.
+echo CTFAK returned exit code %RC%.
+echo Check Latest.log in this folder for the last frame/event being processed.
+echo The exported MFA, if successful, should be inside Dumps.
+pause
+exit /b %RC%
+'@ | Set-Content -Path (Join-Path $out "Try_SonicUSBOnline_Export.bat") -Encoding Ascii
+          @'
+CTFAK 2.0 diagnostic build — Sonic USB Online 1.47.19
+
+1. Keep this whole folder together after extracting CTFAK-2.0-Win64.zip.
+2. Copy sonicusbonline1.47.19.exe into this folder (next to CTFAK.Cli.exe).
+3. Double-click Try_SonicUSBOnline_Export.bat.
+4. Let it run. The program now logs frame starts, event-group/action/condition progress, and the final MFA write phases.
+5. If it appears stuck, give it time, then close only when you have decided it is truly stalled. Latest.log is flushed as it runs.
+6. If export finishes, look under Dumps for the .mfa.
+7. If it stops, send back Latest.log and the final on-screen status. That should reveal whether it got stuck translating frame 124, processing one event group, or writing the output banks/frame records.
+
+The diagnostic build has not yet been verified against the uploaded game on this machine; this launcher is designed to reproduce the test locally without modifying the original EXE.
+'@ | Set-Content -Path (Join-Path $out "TESTING_SONIC_USB_ONLINE.txt") -Encoding UTF8
           Get-ChildItem $out -Recurse | Select-Object FullName
 
       - name: Package CTFAK 2.0 Win64
