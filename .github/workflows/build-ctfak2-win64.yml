@@ -13,6 +13,11 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
+      - name: Checkout build helper scripts
+        uses: actions/checkout@v4
+        with:
+          path: build-helper
+
       - name: Checkout CTFAK 2.0
         uses: actions/checkout@v4
         with:
@@ -26,6 +31,10 @@ jobs:
       - name: Restore NuGet packages
         shell: pwsh
         run: nuget restore CTFAK2.0/CTFAK.sln
+
+      - name: Add export progress diagnostics
+        shell: pwsh
+        run: python build-helper/tools/patch_ctfak2_export_progress.py
 
       - name: Build Release x64
         shell: pwsh
